@@ -1,0 +1,57 @@
+/* Traccar Web - 全域樣式 */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #000;
+  }
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+@media print {
+  * {
+    height: auto !important;
+    overflow: visible !important;
+  }
+}
+
+/* 載入中 Spinner */
+.loader {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: 40px;
+  aspect-ratio: 1;
+  box-sizing: content-box;
+  animation: ll 1s infinite linear;
+  border-radius: 50%;
+  border: 4px solid #d3d3d3;
+  border-right-color: #000;
+}
+
+@keyframes ll {
+  to { transform: rotate(1turn); }
+}
+
+/* MapLibre 地圖覆蓋修正 */
+.maplibregl-marker {
+  cursor: pointer;
+}
+
+.maplibregl-popup {
+  max-width: 400px;
+}
+
+/* 地圖通知按鈕啟用狀態 */
+.map-notification-active {
+  color: #f44336 !important;
+}

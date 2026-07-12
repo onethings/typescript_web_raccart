@@ -1,0 +1,1 @@
+{"name":"Traccar GPS Tracking System","short_name":"Traccar","description":"Open source GPS tracking system","start_url":"/","display":"standalone","background_color":"#ffffff","theme_color":"#1a237e","lang":"en","scope":"/","icons":[{"src":"manifest.webmanifest","sizes":"any","type":"application/manifest+json"}]}
