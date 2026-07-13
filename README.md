@@ -101,4 +101,4 @@ src/
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/onethings/typescript_web_raccart/releases/tag/lincense) file for details.
