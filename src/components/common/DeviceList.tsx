@@ -30,6 +30,7 @@ import { useAppDispatch, useAppSelector } from '../../hooks/useAppStore';
 import { devicesActions } from '../../store';
 import { useTranslation } from '../../i18n/LocalizationProvider';
 import { formatAlarm, formatBoolean, formatPercentage, formatStatus, getStatusColor } from '../../utils/formatter';
+import { mapIconKey, mapIcons } from '../../map/core/preloadImages';
 
 dayjs.extend(relativeTime);
 
@@ -79,7 +80,7 @@ const DeviceRow: React.FC<{
       >
         <ListItemAvatar>
           <Avatar>
-            <div className={classes.icon} style={{ backgroundColor: statusColor === 'success' ? '#4caf50' : statusColor === 'error' ? '#f44336' : '#9e9e9e', borderRadius: '50%', width: 25, height: 25 }} />
+            <img className={classes.icon} src={mapIcons[mapIconKey(item.category)]} alt="" />
           </Avatar>
         </ListItemAvatar>
         <ListItemText
