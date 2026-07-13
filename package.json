@@ -1,13 +1,20 @@
 {
   "name": "traccar-web-ts",
   "version": "1.0.0",
+  "description": "An unofficial TypeScript rewrite of the Traccar Web frontend",
+  "author": "onethings",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/onethings/traccar-web-ts.git"
+  },
   "scripts": {
     "dev": "vite --host",
     "build": "tsc && vite build",
-    "preview": "vite preview",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "eslint src --ext .ts,.tsx",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",
@@ -40,8 +47,12 @@
     "@types/react-dom": "^19.0.0",
     "@types/react-window": "^1.8.8",
     "@vitejs/plugin-react-swc": "^4.3.1",
+    "eslint": "^9.0.0",
     "typescript": "^5.8.0",
     "vite": "^6.0.0",
     "vite-plugin-pwa": "^0.21.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }
