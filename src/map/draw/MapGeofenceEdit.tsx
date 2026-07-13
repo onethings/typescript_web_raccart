@@ -2,24 +2,29 @@
  * 圍欄繪圖編輯元件
  *
  * 使用 @mapbox/mapbox-gl-draw 在地圖上視覺化建立/編輯/刪除圍欄。
+ * 控制項固定顯示在地圖左上角（Polygon, LineString, Trash）。
  * - draw.create → POST /api/geofences → 導向編輯
  * - draw.delete → DELETE /api/geofences/{id}
  * - draw.update → PUT /api/geofences/{id}
  * 對應 FRONTME.md 11.8 MapGeofenceEdit 章節。
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import maplibregl from 'maplibre-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
-import { IconButton, Tooltip } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
+import drawTheme from './drawTheme';
 import { useMap } from '../core/MapView';
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppStore';
-import { useCatch } from '../../hooks/useAsyncTask';
+import { useCatchCallback } from '../../hooks/useAsyncTask';
 import { geofencesActions } from '../../store';
-import { createGeofence, deleteGeofence, updateGeofence } from '../../api/endpoints';
+import { fetchOrThrow } from '../../utils/fetchOrThrow';
 import type { Geofence } from '../../types/models';
+
+// 讓 MapboxDraw 使用 MapLibre 的 CSS class
+MapboxDraw.constants.classes.CONTROL_BASE = 'maplibregl-ctrl';
+MapboxDraw.constants.classes.CONTROL_PREFIX = 'maplibregl-ctrl-';
+MapboxDraw.constants.classes.CONTROL_GROUP = 'maplibregl-ctrl-group';
 
 /**
  * WKT → GeoJSON 轉換
@@ -33,7 +38,6 @@ const wktToGeoJson = (wkt: string): GeoJSON.Feature | null => {
         const [lat, lng] = pair.trim().split(' ').map(Number);
         return [lng, lat] as [number, number];
       });
-      // 確保閉合
       const first = coords[0];
       const last = coords[coords.length - 1];
       if (first[0] !== last[0] || first[1] !== last[1]) {
@@ -67,7 +71,7 @@ const wktToGeoJson = (wkt: string): GeoJSON.Feature | null => {
  * GeoJSON → WKT 轉換
  * 輸出 Traccar 格式的 lat lng 順序
  */
-const geoJsonToWkt = (feature: GeoJSON.Feature): string => {
+export const geoJsonToWkt = (feature: GeoJSON.Feature): string => {
   if (feature.geometry.type === 'Polygon') {
     const coords = (feature.geometry as GeoJSON.Polygon).coordinates[0];
     const points = coords.map(([lng, lat]) => `${lat} ${lng}`).join(', ');
@@ -85,10 +89,6 @@ const geoJsonToWkt = (feature: GeoJSON.Feature): string => {
   return '';
 };
 
-// 常數
-const DRAW_SOURCE_ID = 'mapbox-gl-draw-cold';
-const DRAW_SELECTED_ID = 'gl-draw-selected';
-
 interface MapGeofenceEditProps {
   /** 選取的圍欄 ID（縮放至該圍欄） */
   selectedGeofenceId?: number | null;
@@ -99,6 +99,7 @@ interface MapGeofenceEditProps {
 /**
  * 圍欄繪圖編輯器
  * 使用 mapbox-gl-draw 建立/編輯/刪除圍欄
+ * 控制項固定顯示在地圖左上角
  */
 export const MapGeofenceEdit: React.FC<MapGeofenceEditProps> = ({
   selectedGeofenceId,
@@ -107,142 +108,161 @@ export const MapGeofenceEdit: React.FC<MapGeofenceEditProps> = ({
   const { map, mapReady } = useMap();
   const dispatch = useAppDispatch();
   const geofences = useAppSelector((state) => state.geofences.items);
-  const [drawEnabled, setDrawEnabled] = useState(false);
-  const drawRef = useRef<MapboxDraw | null>(null);
-  const initializedRef = useRef(false);
 
-  const handleCreate = useCatch(async (geojson: GeoJSON.Feature) => {
-    const wkt = geoJsonToWkt(geojson);
-    const res = await createGeofence({ name: 'New Geofence', area: wkt });
-    dispatch(geofencesActions.update([res.data]));
-    onEditNavigate?.(res.data.id);
-  });
+  const draw = useMemo(
+    () =>
+      new MapboxDraw({
+        displayControlsDefault: false,
+        controls: {
+          polygon: true,
+          line_string: true,
+          trash: true,
+        },
+        defaultMode: 'simple_select',
+        userProperties: true,
+        styles: [
+          ...drawTheme,
+          {
+            id: 'gl-draw-title',
+            type: 'symbol',
+            filter: ['all'],
+            layout: {
+              'text-field': '{user_name}',
+              'text-size': 12,
+            },
+            paint: {
+              'text-halo-color': 'white',
+              'text-halo-width': 1,
+            },
+          },
+        ],
+      }),
+    [],
+  );
 
-  const handleDelete = useCatch(async (geojson: GeoJSON.Feature) => {
-    const id = (geojson.properties as Record<string, unknown>)?.id as number;
-    if (!id) return;
-    await deleteGeofence(id);
-    dispatch(geofencesActions.update([]));
-    const res = await fetch('/api/geofences');
-    const data = await res.json();
-    dispatch(geofencesActions.refresh(data));
-  });
+  const refreshGeofences = useCatchCallback(async () => {
+    const response = await fetchOrThrow('/api/geofences');
+    dispatch(geofencesActions.refresh(await response.json()));
+  }, [dispatch]);
 
-  const handleUpdate = useCatch(async (geojson: GeoJSON.Feature) => {
-    const id = (geojson.properties as Record<string, unknown>)?.id as number;
-    if (!id) return;
-    const wkt = geoJsonToWkt(geojson);
-    const existing = geofences[id];
-    if (existing) {
-      await updateGeofence(id, { ...existing, area: wkt });
-      dispatch(geofencesActions.update([]));
-      const res = await fetch('/api/geofences');
-      const data = await res.json();
-      dispatch(geofencesActions.refresh(data));
-    }
-  });
-
-  // 初始化/清理 draw
+  // 初始化 draw 控制項（固定顯示在地圖左上角）
   useEffect(() => {
-    if (!mapReady || !drawEnabled) {
-      if (drawRef.current && map) {
-        drawRef.current = null;
-      }
-      return;
-    }
+    if (!mapReady) return;
 
-    if (initializedRef.current) return;
-    initializedRef.current = true;
+    map.addControl(draw, 'top-left');
 
-    const draw = new MapboxDraw({
-      displayControlsDefault: false,
-      controls: {
-        polygon: true,
-        line_string: true,
-        trash: true,
-      },
-      defaultMode: 'simple_select',
-    });
+    return () => {
+      try { map.removeControl(draw); } catch { /* ignore */ }
+    };
+  }, [mapReady, draw]);
 
-    drawRef.current = draw;
-    map.addControl(draw);
+  // 載入圍欄資料
+  useEffect(() => {
+    if (!mapReady) return;
+    refreshGeofences();
+  }, [mapReady, refreshGeofences]);
 
-    // 載入既有圍欄到繪圖圖層
-    const geofenceList = Object.values(geofences);
-    geofenceList.forEach((gf: Geofence) => {
+  // 同步圍欄到 draw 圖層
+  useEffect(() => {
+    if (!mapReady) return;
+    draw.deleteAll();
+    Object.values(geofences).forEach((gf: Geofence) => {
       if (gf.area) {
         const feature = wktToGeoJson(gf.area);
         if (feature) {
           (feature.properties as Record<string, unknown>).id = gf.id;
+          (feature.properties as Record<string, unknown>).user_name = gf.name;
           draw.add(feature);
         }
       }
     });
+  }, [mapReady, geofences, draw]);
 
-    // 縮放至選取圍欄
-    if (selectedGeofenceId) {
-      const features = draw.getAll().features;
-      const target = features.find(
-        (f) => (f.properties as Record<string, unknown>)?.id === selectedGeofenceId,
-      );
-      if (target) {
-        const coords = (target.geometry as GeoJSON.Polygon).coordinates[0] as [number, number][];
-        if (coords.length === 1) {
-          map.flyTo({ center: [coords[0][0], coords[0][1]], zoom: 14, duration: 1000 });
-        } else if (coords.length > 1) {
-          const bounds = coords.reduce(
-            (b, [lng, lat]) => b.extend([lng, lat]),
-            new maplibregl.LngLatBounds([coords[0][0], coords[0][1]], [coords[0][0], coords[0][1]]),
-          );
-          map.fitBounds(bounds, { padding: 50 });
-        }
-      }
-    }
-
-    // 事件監聽
-    map.on('draw.create', (e: { features: GeoJSON.Feature[] }) => {
-      if (e.features?.[0]) handleCreate(e.features[0]);
-    });
-
-    map.on('draw.delete', (e: { features: GeoJSON.Feature[] }) => {
-      if (e.features?.[0]) handleDelete(e.features[0]);
-    });
-
-    map.on('draw.update', (e: { features: GeoJSON.Feature[] }) => {
-      if (e.features?.[0]) handleUpdate(e.features[0]);
-    });
-
-    return () => {
+  // draw.create → POST
+  useEffect(() => {
+    if (!mapReady) return;
+    const listener = async (event: { features: GeoJSON.Feature[] }) => {
+      const feature = event.features[0];
+      if (!feature) return;
+      draw.delete(feature.id as string);
+      const wkt = geoJsonToWkt(feature);
       try {
-        if (map.getControl(draw)) map.removeControl(draw);
+        const response = await fetchOrThrow('/api/geofences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'New Geofence', area: wkt }),
+        });
+        const item = await response.json();
+        onEditNavigate?.(item.id);
       } catch { /* ignore */ }
-      drawRef.current = null;
-      initializedRef.current = false;
     };
-  }, [mapReady, drawEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+    map.on('draw.create', listener);
+    return () => map.off('draw.create', listener);
+  }, [mapReady, draw, onEditNavigate]);
 
-  const toggleDraw = () => {
-    setDrawEnabled((prev) => !prev);
-  };
+  // draw.delete → DELETE
+  useEffect(() => {
+    if (!mapReady) return;
+    const listener = async (event: { features: GeoJSON.Feature[] }) => {
+      const feature = event.features[0];
+      if (!feature) return;
+      try {
+        await fetchOrThrow(`/api/geofences/${feature.id}`, { method: 'DELETE' });
+        refreshGeofences();
+      } catch { /* ignore */ }
+    };
+    map.on('draw.delete', listener);
+    return () => map.off('draw.delete', listener);
+  }, [mapReady, refreshGeofences]);
 
-  return (
-    <Tooltip title={drawEnabled ? 'Finish Editing' : 'Edit Geofences'}>
-      <IconButton
-        onClick={toggleDraw}
-        sx={{
-          position: 'absolute',
-          top: 88,
-          right: 8,
-          zIndex: 10,
-          bgcolor: drawEnabled ? 'primary.main' : 'background.paper',
-          color: drawEnabled ? 'primary.contrastText' : undefined,
-          boxShadow: 1,
-          '&:hover': { bgcolor: drawEnabled ? 'primary.dark' : 'action.hover' },
-        }}
-        size="small"
-      >
-        <EditIcon />
-      </IconButton>
-    </Tooltip>
-  );
+  // draw.update → PUT
+  useEffect(() => {
+    if (!mapReady) return;
+    const listener = async (event: { features: GeoJSON.Feature[] }) => {
+      const feature = event.features[0];
+      if (!feature) return;
+      const item = Object.values(geofences).find((i) => i.id === feature.id);
+      if (item) {
+        const wkt = geoJsonToWkt(feature);
+        try {
+          await fetchOrThrow(`/api/geofences/${feature.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...item, area: wkt }),
+          });
+          refreshGeofences();
+        } catch { /* ignore */ }
+      }
+    };
+    map.on('draw.update', listener);
+    return () => map.off('draw.update', listener);
+  }, [mapReady, geofences, refreshGeofences]);
+
+  // 縮放至選取圍欄
+  useEffect(() => {
+    if (!mapReady || !selectedGeofenceId) return;
+    const feature = draw.get(selectedGeofenceId);
+    if (!feature?.geometry) return;
+    let coordinates: [number, number][];
+    const geom = feature.geometry;
+    if (geom.type === 'Polygon') {
+      coordinates = (geom as GeoJSON.Polygon).coordinates[0] as [number, number][];
+    } else if (geom.type === 'LineString') {
+      coordinates = (geom as GeoJSON.LineString).coordinates as [number, number][];
+    } else if (geom.type === 'Point') {
+      const [lng, lat] = (geom as GeoJSON.Point).coordinates;
+      map.flyTo({ center: [lng, lat], zoom: 14, duration: 1000 });
+      return;
+    } else {
+      return;
+    }
+    const bounds = coordinates.reduce(
+      (b, [lng, lat]) => b.extend([lng, lat]),
+      new maplibregl.LngLatBounds(coordinates[0], coordinates[1]),
+    );
+    const canvas = map.getCanvas();
+    map.fitBounds(bounds, { padding: Math.min(canvas.width, canvas.height) * 0.1 });
+  }, [mapReady, selectedGeofenceId, draw]);
+
+  return null;
 };

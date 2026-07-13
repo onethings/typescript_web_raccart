@@ -94,7 +94,7 @@ export const MapGeocoder: React.FC = () => {
         }}
         sx={{
           position: 'absolute',
-          top: 48,
+          top: 226,
           right: 8,
           zIndex: 10,
           bgcolor: 'background.paper',

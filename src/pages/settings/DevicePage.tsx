@@ -73,10 +73,12 @@ export const DevicePage: React.FC = () => {
                 <TextField size="small" label="Model" value={device.model || ''} onChange={(e) => update('model', e.target.value)} />
                 <TextField size="small" label="Contact" value={device.contact || ''} onChange={(e) => update('contact', e.target.value)} />
                 <FormControl size="small">
-                  <InputLabel>Category</InputLabel>
-                  <Select value={device.category || 'default'} label="Category" onChange={(e) => update('category', e.target.value)}>
+                  <InputLabel>{t('deviceCategory')}</InputLabel>
+                  <Select value={device.category || 'default'} label={t('deviceCategory')} onChange={(e) => update('category', e.target.value)}>
                     {DEVICE_CATEGORIES.map((cat) => (
-                      <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                      <MenuItem key={cat} value={cat}>
+                        {t(`category${cat.charAt(0).toUpperCase()}${cat.slice(1)}`)}
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>

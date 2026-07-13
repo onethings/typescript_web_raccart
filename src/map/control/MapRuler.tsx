@@ -213,7 +213,7 @@ export const MapRuler: React.FC = () => {
           onClick={toggleActive}
           sx={{
             position: 'absolute',
-            top: 48,
+            top: 186,
             right: 8,
             zIndex: 10,
             bgcolor: active ? 'primary.main' : 'background.paper',

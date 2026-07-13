@@ -2,10 +2,11 @@
  * 動態屬性編輯器 Accordion
  *
  * 新增/刪除/編輯自訂屬性，支援 string/number/boolean 型別。
+ * 支援 definitions 顯示已知屬性的名稱，focusAttribute 自動聚焦指定屬性。
  * 對應 FRONTME.md 7.19 EditAttributesAccordion 章節。
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Accordion,
   AccordionSummary,
@@ -22,6 +23,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import { AddAttributeDialog } from './AddAttributeDialog';
+import type { AttributeDef } from '../../attributes/useDeviceAttributes';
 
 interface EditAttributesAccordionProps {
   /** 屬性物件 */
@@ -30,7 +32,24 @@ interface EditAttributesAccordionProps {
   onChange: (attributes: Record<string, unknown>) => void;
   /** 標題 */
   title?: string;
+  /** 已知屬性定義（key → AttributeDef） */
+  definitions?: Record<string, AttributeDef>;
+  /** 要自動聚焦的屬性 key */
+  focusAttribute?: string;
 }
+
+/**
+ * 取得屬性的顯示名稱
+ */
+const getAttributeName = (
+  key: string,
+  definitions?: Record<string, AttributeDef>,
+): string => {
+  if (definitions?.[key]) {
+    return definitions[key].name;
+  }
+  return key;
+};
 
 /**
  * 動態屬性編輯器
@@ -40,8 +59,27 @@ export const EditAttributesAccordion: React.FC<EditAttributesAccordionProps> = (
   attributes,
   onChange,
   title = 'Attributes',
+  definitions,
+  focusAttribute,
 }) => {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [expanded, setExpanded] = useState(() => !!focusAttribute);
+  const focusedRef = useRef(false);
+
+  // 自動展開並聚焦指定屬性
+  useEffect(() => {
+    if (focusAttribute && !focusedRef.current) {
+      focusedRef.current = true;
+      setExpanded(true);
+      setTimeout(() => {
+        const el = document.querySelector(`[data-attr-key="${focusAttribute}"]`);
+        if (el) {
+          (el as HTMLElement).focus();
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 200);
+    }
+  }, [focusAttribute]);
 
   /** 更新單一屬性值 */
   const handleUpdate = (key: string, value: unknown) => {
@@ -63,16 +101,27 @@ export const EditAttributesAccordion: React.FC<EditAttributesAccordionProps> = (
 
   return (
     <>
-      <Accordion>
+      <Accordion expanded={expanded} onChange={(_, exp) => setExpanded(exp)}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Typography>{title}</Typography>
         </AccordionSummary>
         <AccordionDetails>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
             {Object.entries(attributes).map(([key, value]) => (
-              <Box key={key} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="caption" sx={{ minWidth: 100, fontWeight: 500 }}>
-                  {key}
+              <Box
+                key={key}
+                data-attr-key={key}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  bgcolor: key === focusAttribute ? 'action.selected' : 'transparent',
+                  borderRadius: 1,
+                  p: key === focusAttribute ? 0.5 : 0,
+                }}
+              >
+                <Typography variant="caption" sx={{ minWidth: 120, fontWeight: 500 }}>
+                  {getAttributeName(key, definitions)}
                 </Typography>
                 {typeof value === 'boolean' ? (
                   <FormControlLabel
@@ -121,6 +170,7 @@ export const EditAttributesAccordion: React.FC<EditAttributesAccordionProps> = (
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         onAdd={handleAdd}
+        definitions={definitions ? Object.values(definitions) : undefined}
       />
     </>
   );

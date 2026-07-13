@@ -13,6 +13,8 @@ export interface MapStyleDef {
   id: string;
   name: string;
   available: boolean;
+  /** API key 屬性名稱（若 unavailable 則跳轉到使用者頁面填寫此屬性） */
+  attribute?: string;
 }
 
 /**
@@ -35,21 +37,21 @@ export const useMapStyles = (): MapStyleDef[] => {
       { id: 'osm', name: 'OpenStreetMap', available: true },
       { id: 'openTopoMap', name: 'OpenTopoMap', available: true },
       { id: 'carto', name: 'CartoDB', available: true },
-      { id: 'googleRoad', name: 'Google Roads', available: hasKey('googleKey') },
-      { id: 'googleSatellite', name: 'Google Satellite', available: hasKey('googleKey') },
-      { id: 'googleHybrid', name: 'Google Hybrid', available: hasKey('googleKey') },
-      { id: 'mapTilerBasic', name: 'MapTiler Basic', available: hasKey('mapTilerKey') },
-      { id: 'mapTilerHybrid', name: 'MapTiler Hybrid', available: hasKey('mapTilerKey') },
-      { id: 'bingRoad', name: 'Bing Roads', available: hasKey('bingMapsKey') },
-      { id: 'bingAerial', name: 'Bing Aerial', available: hasKey('bingMapsKey') },
-      { id: 'bingHybrid', name: 'Bing Hybrid', available: hasKey('bingMapsKey') },
-      { id: 'tomTomBasic', name: 'TomTom Basic', available: hasKey('tomTomKey') },
-      { id: 'tomTomNight', name: 'TomTom Night', available: hasKey('tomTomKey') },
-      { id: 'hereBasic', name: 'HERE Basic', available: hasKey('hereKey') },
-      { id: 'hereHybrid', name: 'HERE Hybrid', available: hasKey('hereKey') },
-      { id: 'hereSatellite', name: 'HERE Satellite', available: hasKey('hereKey') },
-      { id: 'mapboxStreets', name: 'Mapbox Streets', available: hasKey('mapboxAccessToken') },
-      { id: 'ordnanceSurvey', name: 'Ordnance Survey', available: true },
+      { id: 'googleRoad', name: 'Google Roads', available: hasKey('googleKey'), attribute: 'googleKey' },
+      { id: 'googleSatellite', name: 'Google Satellite', available: hasKey('googleKey'), attribute: 'googleKey' },
+      { id: 'googleHybrid', name: 'Google Hybrid', available: hasKey('googleKey'), attribute: 'googleKey' },
+      { id: 'mapTilerBasic', name: 'MapTiler Basic', available: hasKey('mapTilerKey'), attribute: 'mapTilerKey' },
+      { id: 'mapTilerHybrid', name: 'MapTiler Hybrid', available: hasKey('mapTilerKey'), attribute: 'mapTilerKey' },
+      { id: 'bingRoad', name: 'Bing Roads', available: hasKey('bingMapsKey'), attribute: 'bingMapsKey' },
+      { id: 'bingAerial', name: 'Bing Aerial', available: hasKey('bingMapsKey'), attribute: 'bingMapsKey' },
+      { id: 'bingHybrid', name: 'Bing Hybrid', available: hasKey('bingMapsKey'), attribute: 'bingMapsKey' },
+      { id: 'tomTomBasic', name: 'TomTom Basic', available: hasKey('tomTomKey'), attribute: 'tomTomKey' },
+      { id: 'tomTomNight', name: 'TomTom Night', available: hasKey('tomTomKey'), attribute: 'tomTomKey' },
+      { id: 'hereBasic', name: 'HERE Basic', available: hasKey('hereKey'), attribute: 'hereKey' },
+      { id: 'hereHybrid', name: 'HERE Hybrid', available: hasKey('hereKey'), attribute: 'hereKey' },
+      { id: 'hereSatellite', name: 'HERE Satellite', available: hasKey('hereKey'), attribute: 'hereKey' },
+      { id: 'mapboxStreets', name: 'Mapbox Streets', available: hasKey('mapboxAccessToken'), attribute: 'mapboxAccessToken' },
+      { id: 'ordnanceSurvey', name: 'Ordnance Survey', available: true, attribute: 'ordnanceSurveyKey' },
       { id: 'custom', name: 'Custom Map', available: !!server?.mapUrl },
     ];
   }, [server]);

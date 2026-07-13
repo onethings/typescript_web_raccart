@@ -1,13 +1,13 @@
 /**
- * 圍欄編輯器頁面
+ * 圍欄列表與編輯頁面
  *
- * 視覺化圍欄編輯，支援地圖繪製與 GPX 匯入。
+ * 左側顯示圍欄列表，右側地圖可視化編輯。
+ * 支援 GPX 匯入、新增/編輯/刪除圍欄。
  * 對應 FRONTME.md 9.5 GeofencesPage 章節。
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, Fragment, useCallback } from 'react';
 import {
-  AppBar,
   Toolbar,
   Typography,
   IconButton,
@@ -15,157 +15,181 @@ import {
   ListItemButton,
   ListItemText,
   Divider,
-  Button,
+  Paper,
 } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
-import FileUploadIcon from '@mui/icons-material/FileUpload';
-import { useNavigate } from 'react-router-dom';
+import Tooltip from '@mui/material/Tooltip';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { makeStyles } from 'tss-react/mui';
+import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppStore';
-import { useCatch } from '../../hooks/useAsyncTask';
+import { useCatch, useCatchCallback } from '../../hooks/useAsyncTask';
 import { MapView } from '../../map/core/MapView';
-import { MapGeofence } from '../../map/main/MapGeofence';
 import { MapGeofenceEdit } from '../../map/draw/MapGeofenceEdit';
+import { MapOsmGeofenceSearch } from '../../map/draw/MapOsmGeofenceSearch';
+import { MapScale } from '../../map/control/MapScale';
+import { MapCurrentLocation } from '../../map/control/MapCurrentLocation';
+import { MapGeocoder } from '../../map/control/MapGeocoder';
+import { BackIcon } from '../../components/common/BackIcon';
+import { CollectionActions } from '../../components/common/CollectionActions';
+import { MapSwitcher } from '../../map/control/MapSwitcher';
+import { MapRuler } from '../../map/control/MapRuler';
+import { MapNotification } from '../../map/control/MapNotification';
+import { useMapStyles } from '../../map/core/useMapStyles';
+import { useAttributePreference } from '../../utils/preferences';
 import { geofencesActions } from '../../store';
-import { createGeofence, deleteGeofence } from '../../api/endpoints';
+import { fetchOrThrow } from '../../utils/fetchOrThrow';
+import { useTranslation } from '../../i18n/LocalizationProvider';
 
-const DRAWER_WIDTH = 320;
+const DRAWER_WIDTH = 340;
 
 const useStyles = makeStyles()((theme) => ({
   root: { height: '100%', display: 'flex', flexDirection: 'column' },
-  body: { display: 'flex', flex: 1, overflow: 'hidden' },
-  listDrawer: {
-    width: DRAWER_WIDTH,
-    borderRight: `1px solid ${theme.palette.divider}`,
+  content: {
+    flexGrow: 1,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'row',
+    [theme.breakpoints.down('sm')]: {
+      flexDirection: 'column-reverse',
+    },
+  },
+  drawer: {
     display: 'flex',
     flexDirection: 'column',
-    [theme.breakpoints.down('md')]: { display: 'none' },
+    [theme.breakpoints.up('sm')]: {
+      width: DRAWER_WIDTH,
+    },
+    [theme.breakpoints.down('sm')]: {
+      height: theme.dimensions?.drawerHeightPhone || 200,
+    },
   },
-  mapContainer: { flex: 1 },
-  listHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: theme.spacing(2),
-  },
-  toolbar: { display: 'flex', gap: theme.spacing(1) },
+  mapContainer: { flexGrow: 1, position: 'relative' as const },
+  title: { flexGrow: 1 },
+  fileInput: { display: 'none' },
+  list: { flexGrow: 1, overflow: 'auto' },
 }));
 
-/** 圍欄編輯器頁面 */
+/** 圍欄列表頁面 */
 export const GeofencesPage: React.FC = () => {
   const { classes } = useStyles();
-  const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const geofences = useAppSelector((state) => state.geofences.items);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
+  const t = useTranslation();
 
-  const geofenceList = Object.values(geofences);
+  const items = useAppSelector((state) => state.geofences.items);
+  const [selectedGeofenceId, setSelectedGeofenceId] = useState<number | null>(null);
 
-  /** 新增圍欄（建立一個空的然後導向編輯） */
-  const handleAdd = useCatch(async () => {
-    const res = await createGeofence({ name: 'New Geofence', area: 'POLYGON ((0 0, 0 1, 1 1, 1 0, 0 0))' });
-    dispatch(geofencesActions.update([res.data]));
-    navigate(`/settings/geofence/${res.data.id}`);
-  });
+  const mapStyles = useMapStyles();
+  const selectedMapStyle = useAttributePreference('selectedMapStyle', 'osm');
 
-  /** 刪除圍欄 */
-  const handleDelete = useCatch(async (id: number) => {
-    await deleteGeofence(id);
-    dispatch(geofencesActions.update([])); // 觸發重新整理
-    // 重新載入圍欄
-    const res = await fetch('/api/geofences');
-    const data = await res.json();
-    dispatch(geofencesActions.refresh(data));
-  });
+  const handleStyleSelect = (id: string) => {
+    localStorage.setItem('selectedMapStyle', id);
+    window.location.reload();
+  };
 
-  /** 匯入 GPX */
-  const handleFileImport = useCatch(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const geofenceList = Object.values(items);
+
+  /** 重新載入圍欄 */
+  const refreshGeofences = useCatchCallback(async () => {
+    const response = await fetchOrThrow('/api/geofences');
+    dispatch(geofencesActions.refresh(await response.json()));
+  }, [dispatch]);
+
+  /** 匯入 GPX 檔案 */
+  const handleFile = useCatch(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    const [file] = files;
     if (!file) return;
 
     const text = await file.text();
-    const parser = new DOMParser();
-    const xml = parser.parseFromString(text, 'text/xml');
-    const trkpts = xml.querySelectorAll('trkpt');
-
-    if (trkpts.length > 0) {
-      const points = Array.from(trkpts).map((pt) => {
-        const lat = pt.getAttribute('lat');
-        const lon = pt.getAttribute('lon');
-        return `${lat} ${lon}`;
+    const xml = new DOMParser().parseFromString(text, 'text/xml');
+    const segment = xml.getElementsByTagName('trkseg')[0];
+    if (segment) {
+      const coordinates = Array.from(segment.getElementsByTagName('trkpt'))
+        .map((point) => `${point.getAttribute('lat')} ${point.getAttribute('lon')}`)
+        .join(', ');
+      const area = `LINESTRING (${coordinates})`;
+      const response = await fetchOrThrow('/api/geofences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: t('sharedGeofence'), area }),
       });
-
-      const wkt = `LINESTRING (${points.join(', ')})`;
-      const res = await createGeofence({ name: file.name.replace('.gpx', ''), area: wkt });
-      dispatch(geofencesActions.update([res.data]));
-      navigate(`/settings/geofence/${res.data.id}`);
+      const item = await response.json();
+      navigate(`/settings/geofence/${item.id}`);
     }
   });
 
   return (
     <div className={classes.root}>
-      <AppBar position="static" color="default">
-        <Toolbar>
-          <IconButton edge="start" onClick={() => navigate('/')}>
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>Geofence Editor</Typography>
-          <div className={classes.toolbar}>
-            <Button size="small" startIcon={<AddIcon />} variant="contained" onClick={handleAdd}>
-              Add
-            </Button>
-            <Button
-              size="small"
-              startIcon={<FileUploadIcon />}
-              variant="outlined"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Import GPX
-            </Button>
-            <input ref={fileInputRef} type="file" accept=".gpx" hidden onChange={handleFileImport} />
-          </div>
-        </Toolbar>
-      </AppBar>
-
-      <div className={classes.body}>
-        {/* 圍欄列表 */}
-        <div className={classes.listDrawer}>
-          <div className={classes.listHeader}>
-            <Typography variant="subtitle2">{geofenceList.length} geofences</Typography>
-          </div>
+      <div className={classes.content}>
+        {/* 左側圍欄列表 */}
+        <Paper square className={classes.drawer}>
+          <Toolbar>
+            <IconButton edge="start" sx={{ mr: 2 }} onClick={() => navigate(-1)}>
+              <BackIcon />
+            </IconButton>
+            <Typography variant="h6" className={classes.title}>
+              {t('sharedGeofences')}
+            </Typography>
+            <label htmlFor="upload-gpx">
+              <input
+                accept=".gpx"
+                id="upload-gpx"
+                type="file"
+                className={classes.fileInput}
+                onChange={handleFile}
+              />
+              <IconButton edge="end" component="span">
+                <Tooltip title={t('sharedUpload')}>
+                  <UploadFileIcon />
+                </Tooltip>
+              </IconButton>
+            </label>
+          </Toolbar>
           <Divider />
-          <List dense sx={{ flex: 1, overflow: 'auto' }}>
-            {geofenceList.map((gf) => (
-              <ListItemButton key={gf.id} onClick={() => navigate(`/settings/geofence/${gf.id}`)}>
-                <ListItemText primary={gf.name} secondary={gf.area?.substring(0, 40)} />
-                <IconButton
-                  size="small"
-                  edge="end"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(gf.id);
-                  }}
+          <List className={classes.list}>
+            {geofenceList.map((item, index, list) => (
+              <Fragment key={item.id}>
+                <ListItemButton
+                  selected={selectedGeofenceId === item.id}
+                  onClick={() => setSelectedGeofenceId(item.id)}
                 >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </ListItemButton>
+                  <ListItemText primary={item.name} />
+                  <CollectionActions
+                    editPath={`/settings/geofence/${item.id}`}
+                    onDelete={async () => {
+                      await fetchOrThrow(`/api/geofences/${item.id}`, { method: 'DELETE' });
+                      refreshGeofences();
+                    }}
+                  />
+                </ListItemButton>
+                {index < list.length - 1 ? <Divider /> : null}
+              </Fragment>
             ))}
             {geofenceList.length === 0 && (
               <ListItemButton disabled>
-                <ListItemText primary="No geofences" secondary="Click Add to create one" />
+                <ListItemText primary={t('sharedGeofences')} secondary={t('sharedCreateGeofence')} />
               </ListItemButton>
             )}
           </List>
-        </div>
+        </Paper>
 
-        {/* 地圖 */}
+        {/* 右側地圖 */}
         <div className={classes.mapContainer}>
           <MapView>
-            <MapGeofence />
-            <MapGeofenceEdit onEditNavigate={(id) => navigate(`/settings/geofence/${id}`)} />
+            <MapGeofenceEdit selectedGeofenceId={selectedGeofenceId} />
+            <MapScale />
+            <MapCurrentLocation />
           </MapView>
+          <MapGeocoder />
+          <MapSwitcher
+            styles={mapStyles.map((s) => ({ id: s.id, name: s.name }))}
+            selectedId={selectedMapStyle}
+            onSelect={handleStyleSelect}
+          />
+          <MapRuler />
+          <MapOsmGeofenceSearch />
+          <MapNotification />
         </div>
       </div>
     </div>

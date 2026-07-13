@@ -63,7 +63,7 @@ export const MapSwitcher: React.FC<MapSwitcherProps> = ({
         onClick={(e) => setAnchorEl(e.currentTarget)}
         sx={{
           position: 'absolute',
-          top: 8,
+          top: 146,
           right: 8,
           zIndex: 10,
           bgcolor: 'background.paper',
